@@ -16,6 +16,7 @@ L2Dll::~L2Dll()
 
 int L2Dll::Instance(const char *dll)
 {
+	int							nSec;
 	int							nRetVal;
 	tagDll_DataCenterInput		tagDcInput;
 
@@ -67,6 +68,22 @@ int L2Dll::Instance(const char *dll)
 	memset(&BaseInfo, 0, sizeof(tagDll_DriverBaseInfo));
 	m_tagDllFunc.GetBaseInfo(&BaseInfo);
 	m_pControlIO = BaseInfo.drvControlClassPtr;
+
+	for( int nSec = 0; nSec < 60*2; nSec++ )
+	{
+		if( true == m_tagDllFunc.IsWorking() )
+		{
+			return 1;
+		}
+
+		::Sleep( 1000 );
+	}
+
+	if( nSec >= 60*2 )
+	{
+		Release();
+		return -2;
+	}
 
 	return 1;
 }

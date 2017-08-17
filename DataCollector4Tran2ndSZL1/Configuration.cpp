@@ -91,7 +91,7 @@ int Configuration::Initialize()
 	int					nErrCode = 0;
     char				pszTmp[1024] = { 0 };
 
-	m_nMarketID = 14;
+	m_nMarketID = 3;
     ::GetModuleFileName( g_oModule, pszTmp, sizeof(pszTmp) );
     sPath = pszTmp;
     sPath = sPath.substr( 0, sPath.find(".dll") ) + ".ini";

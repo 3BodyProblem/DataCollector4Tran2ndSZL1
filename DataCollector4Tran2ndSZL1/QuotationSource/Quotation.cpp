@@ -105,8 +105,12 @@ int Quotation::Initialize()
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Session Activating............" );
 
 		Release();
+		if( m_oSZL1Dll.Instance( "tran2ndsz.dll" ) < 0 )
+		{
+			Release();
+			return -2;
+		}
 
-		m_oSZL1Dll.Instance( "tran2ndsz.dll" );
 		BuildImageData();
 		m_oWorkStatus = ET_SS_DISCONNECTED;				///< 更新Quotation会话的状态
 

@@ -73,6 +73,7 @@ int QuoCollector::RecoverQuotation()
 		QuoCollector::GetCollector()->OnLog( TLV_WARN, "QuoCollector::RecoverQuotation() : failed 2 subscript quotation, errorcode=%d", nErrorCode );
 		return -1;
 	}
+
 /*
 	for( nSec = 0; nSec < 60 && ET_SS_WORKING != m_oQuotationData.GetWorkStatus(); nSec++ )
 	{
