@@ -175,25 +175,6 @@ int Quotation::Release()
 	return 0;
 }
 
-double Quotation::GetScale(int index) {
-	int pr = m_mapPriceRate[index];
-    return 1000. / pow(10, (double)pr);
-}
-
-int Quotation::GetTime() {
-    tagCcComm_MarketInfoHead	oHead = {0};
-    tagCcComm_MarketInfoDetail  detail[512];
-    m_oSZL1Dll.GetMarketInfo(&oHead, detail, sizeof detail / sizeof detail[0]);
-    return oHead.Time;
-}
-
-int Quotation::GetDate() {
-    tagCcComm_MarketInfoHead	oHead = {0};
-    tagCcComm_MarketInfoDetail  detail[512];
-    m_oSZL1Dll.GetMarketInfo(&oHead, detail, sizeof detail / sizeof detail[0]);
-    return oHead.Date;
-}
-
 int Quotation::BuildImageData()
 {
 	int								nErrCode = 0;
@@ -241,8 +222,6 @@ int Quotation::BuildImageData()
 		tagCategory.WareCount = tagDetail[i].WareCount;
 
 		QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
-
-		m_mapPriceRate[i] = tagDetail[i].PriceRate;
 	}
 
 	tagCcComm_ShNameTable*	pTable = (tagCcComm_ShNameTable*)m_pDataBuff;

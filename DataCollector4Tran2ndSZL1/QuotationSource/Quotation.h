@@ -105,9 +105,7 @@ public:///< 公共方法函数
 	 * @return			==0			成功
 	 */
 	int					BuildImageData();
-    int GetTime();
-    int GetDate();
-	double GetScale(int index);
+
     static void			OnPush( unsigned char MainType, unsigned char ChildType, const char *InBuf, unsigned short InSize, unsigned char Marketid, unsigned short UnitNo, bool SendDirectFlag );
 
     void				OnInnerPush( unsigned char MainType, unsigned char ChildType, const char * InBuf, unsigned short InSize, unsigned char marketid );
@@ -122,11 +120,9 @@ public:///< 公共方法函数
     void OnPushPreClose(const char *buf, size_t len);
     void OnPushPreName(const char *buf, size_t len);
 
-
 private:
 	CriticalObject		m_oLock;				///< 临界区对象
 	WorkStatus			m_oWorkStatus;			///< 工作状态
-	std::map<char,char>	m_mapPriceRate;
 	L2Dll				m_oSZL1Dll;				///< 深圳传输模块管理对象
 	char*				m_pDataBuff;			///< 数据临时缓存
 };
