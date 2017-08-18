@@ -83,6 +83,12 @@ Quotation::Quotation()
 Quotation::~Quotation()
 {
 	Release();
+
+	if( NULL != m_pDataBuff )
+	{
+		delete [] m_pDataBuff;
+		m_pDataBuff = NULL;
+	}
 }
 
 WorkStatus& Quotation::GetWorkStatus()
@@ -100,19 +106,54 @@ int Quotation::Initialize()
 
 	if( GetWorkStatus() == ET_SS_UNACTIVE )
 	{
-		int					nErrCode = -1;
-
-		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Session Activating............" );
+		unsigned int				nSec = 0;
+		int							nErrCode = 0;
+		tagCcComm_MarketInfoHead	tagHead = { 0 };
+		tagCcComm_MarketInfoDetail	tagDetail[32] = { 0 };
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Quotation Is Activating............" );
 
 		Release();
 		if( m_oSZL1Dll.Instance( "tran2ndsz.dll" ) < 0 )
 		{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 initialize tran2ndsz.dll" );
 			Release();
 			return -2;
 		}
 
-		BuildImageData();
-		m_oWorkStatus = ET_SS_DISCONNECTED;				///< 更新Quotation会话的状态
+		for( nSec = 0; nSec < 60*2; nSec++ )
+		{
+			SimpleTask::Sleep(1000);
+
+			if( true == m_oSZL1Dll.IsWorking() )
+			{
+				if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
+				{
+					continue;
+				}
+
+				if( tagHead.MarketStatus <= 0 )
+				{	
+					continue;
+				}
+
+				break;
+			}
+		}
+
+		if( nSec >= 60*2 )
+		{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : overtime > (2mins)" );
+			Release();
+			return -3;
+		}
+
+		if( (nErrCode = BuildImageData()) < 0 )
+		{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 build image data 2 database" );
+			return -4;
+		}
+
+		m_oWorkStatus = ET_SS_WORKING;				///< 更新Quotation会话的状态
 
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Quotation Activated!.............." );
 	}
@@ -122,11 +163,14 @@ int Quotation::Initialize()
 
 int Quotation::Release()
 {
-	QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroying .............." );
+	if( m_oWorkStatus != ET_SS_UNACTIVE )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroying .............." );
 
-	m_oWorkStatus = ET_SS_UNACTIVE;	///< 更新Quotation会话的状态
+		m_oWorkStatus = ET_SS_UNACTIVE;	///< 更新Quotation会话的状态
 
-	QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroyed! .............." );
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroyed! .............." );
+	}
 
 	return 0;
 }
@@ -150,117 +194,159 @@ int Quotation::GetDate() {
     return oHead.Date;
 }
 
-void Quotation::BuildImageData()
+int Quotation::BuildImageData()
 {
 	int								nErrCode = 0;
 	tagCcComm_MarketInfoHead		tagHead = { 0 };
 	tagCcComm_MarketInfoDetail		tagDetail[32] = { 0 };
+	tagSZL1MarketInfo_LF164			tagMkInfo = { 0 };
+	tagSZL1MarketStatus_HF166		tagMkStatus = { 0 };
 
-	while( true )
+	if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
 	{
-		for( unsigned int n = 1; true; n++ )
-		{
-			if( n % 20 == 0 )
-			{
-				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : overtime, 20sec" );
-			}
-
-			if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
-			{
-				SimpleTask::Sleep(1000);
-				continue;
-			}
-
-			if( tagHead.MarketStatus <= 0 )
-			{	
-				SimpleTask::Sleep(1000);
-				continue;
-			}
-		}
-
-		for( int i = 0 ; i < nErrCode; i++ )
-		{
-			m_mapPriceRate[i] = tagDetail[i].PriceRate;
-		}
-
-		tagCcComm_ShNameTable*	pTable = (tagCcComm_ShNameTable*)m_pDataBuff;
-		if( (nErrCode = m_oSZL1Dll.GetNameTable( 0, pTable, tagHead.WareCount )) < 0 )
-		{
-			SimpleTask::Sleep(1000);
-			continue;
-		}
-
-		for( int i = 0; i < tagHead.WareCount; ++i )
-		{
-/*			DF_NameData name;
-			strncpy(name.code, pTable[i].Code, sizeof(name.code));
-			strncpy(name.name, pTable[i].Name, sizeof(name.name));
-			name.kind = pTable[i].Type;
-			GetNameTable()->Add(name);*/
-		}
-
-		//3,获取扩展码表
-		tagCcComm_NameTableEx*	pNameEx = (tagCcComm_NameTableEx*)m_pDataBuff;
-		nErrCode = m_oSZL1Dll.GetNameTableEx(0, pNameEx, tagHead.WareCount);
-
-		//4,获取指数快照
-		tagCcComm_IndexData*	pIndex = (tagCcComm_IndexData*)m_pDataBuff;
-		nErrCode = m_oSZL1Dll.GetIndex( 0, pIndex, tagHead.WareCount );
-		for (int i = 0; i < nErrCode; ++i) {
-/*			DF_IndexData data = {0};
-			int index = GetNameTable()->GetIndex(pIndex[i].Code);
-			if (index == -1) {
-				cerr << "index not found" << endl;
-				continue;
-			}
-			strncpy(data.code, pIndex[i].Code, sizeof(data.code));
-			data.serial = index;
-			double scale = GetScale(data.serial);
-			data.amount = pIndex[i].Amount;
-			data.high = pIndex[i].High * scale + 0.5;
-			data.low = pIndex[i].Low * scale + 0.5;
-			data.now = pIndex[i].Now * scale + 0.5;
-			data.open = pIndex[i].Open * scale + 0.5;
-			data.volume = pIndex[i].Volume;
-			data.preclose = pIndex[i].Close * scale + 0.5;
-			GetIndexTable()->Put(data);*/
-		}
-
-		//5,获取个股快照
-		tagCcComm_StockData5*	pStock = (tagCcComm_StockData5*)m_pDataBuff;
-		nErrCode = m_oSZL1Dll.GetStock(0, pStock, tagHead.WareCount);
-/*		for (int i = 0; i < nErrCode; ++i) {
-			DF_StockData data = {0};
-			int index = GetNameTable()->GetIndex(pStock[i].Code);
-			strncpy(data.code, pStock[i].Code, sizeof(data.code));
-			data.serial = index;
-			double scale = GetScale(data.serial);
-			data.amount = pStock[i].Amount;
-			for (int j = 0; j < 10; ++j) {
-				data.buy[j].price = pStock[i].Buy[j].Price * scale + 0.5;
-				data.buy[j].volume = pStock[i].Buy[j].Volume;
-				data.sell[j].price = pStock[i].Sell[j].Price * scale + 0.5;
-				data.sell[j].volume = pStock[i].Sell[j].Volume;
-			}
-			data.high = pStock[i].High * scale + 0.5;
-			data.highlimit = pStock[i].HighLimit * scale + 0.5;
-			data.low = pStock[i].Low * scale + 0.5;
-			data.lowlimit = pStock[i].LowLimit * scale + 0.5;
-			data.now = pStock[i].Now * scale + 0.5;
-			data.open = pStock[i].Open * scale + 0.5;
-			data.records = pStock[i].Records;
-			data.vbuyprice = pStock[i].VBuyPrice * scale + 0.5;
-			data.vbuyvolume = pStock[i].VBuyVolume;
-			data.iopv = pStock[i].Voip;
-			data.volume = pStock[i].Volume;
-			data.vsellprice = pStock[i].VSellPrice * scale + 0.5;
-			data.vsellvolume = pStock[i].VSellVolume;
-			data.preclose = pStock[i].Close * scale + 0.5;
-			data.status = 0;//pNameEx[data.serial].SFlag;
-			memcpy(data.prefix, pTable[index].PreName, sizeof data.prefix);
-			GetStockTable()->Put(GetIndexTable()->GetCount(), data);
-		}*/
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : cannot fetch marketinfo, errorcode=%d", nErrCode );
+		return -1;
 	}
+
+	if( tagHead.MarketStatus <= 0 )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : marketstatus =%d ", tagHead.MarketStatus );
+		return -2;
+	}
+
+	::strcpy( tagMkStatus.Key, "status" );
+	tagMkStatus.MarketStatus = tagHead.MarketStatus;
+	tagMkStatus.MarketTime = tagHead.Time;
+	QuoCollector::GetCollector()->OnImage( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), false );
+
+	::strcpy( tagMkInfo.Key, "mkinfo" );
+	tagMkInfo.KindCount = tagHead.KindCount;
+	tagMkInfo.MarketDate = tagHead.Date;
+	tagMkInfo.MarketID = Configuration::GetConfig().GetMarketID();
+	::memcpy( &(tagMkInfo.MarketPeriods), &(tagHead.Periods), sizeof(tagHead.Periods) );
+	tagMkInfo.PeriodsCount = tagHead.PeriodsCount;
+	tagMkInfo.WareCount = tagHead.WareCount;
+	QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
+
+	for( int i = 0 ; i < tagMkInfo.KindCount; i++ )
+	{
+		char						pszKey[12] = { 0 };
+		tagSZL1KindDetail_LF165		tagCategory = { 0 };
+
+		::sprintf( pszKey, "%d", i );
+		::strcpy( tagCategory.Key, pszKey );
+		::strncpy( tagCategory.KindName, tagDetail[i].KindName, sizeof(tagDetail[i].KindName) );
+		tagCategory.LotSize = tagDetail[i].LotSize;
+		tagCategory.PriceRate = tagDetail[i].PriceRate;
+		tagCategory.WareCount = tagDetail[i].WareCount;
+
+		QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
+
+		m_mapPriceRate[i] = tagDetail[i].PriceRate;
+	}
+
+	tagCcComm_ShNameTable*	pTable = (tagCcComm_ShNameTable*)m_pDataBuff;
+	if( (nErrCode = m_oSZL1Dll.GetNameTable( 0, pTable, tagHead.WareCount )) < 0 )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : cannot fetch nametable from dll, errorcode = %d ", nErrCode );
+		return -3;
+	}
+
+	for( int i = 0; i < tagHead.WareCount; ++i )
+	{
+		tagSZL1ReferenceData_LF167	tagRef = { 0 };
+
+		strncpy( tagRef.Code, pTable[i].Code, sizeof(pTable[i].Code) );
+		tagRef.Kind = pTable[i].Type;
+		strncpy( tagRef.Name, pTable[i].Name, sizeof(pTable[i].Name) );
+		QuoCollector::GetCollector()->OnImage( 167, (char*)&tagRef, sizeof(tagSZL1ReferenceData_LF167), false );
+	}
+
+	//3,获取扩展码表
+	tagCcComm_NameTableEx*	pNameEx = (tagCcComm_NameTableEx*)m_pDataBuff;
+	if( (nErrCode = m_oSZL1Dll.GetNameTableEx(0, pNameEx, tagHead.WareCount)) < 0 )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : cannot fetch nametableEx from dll, errorcode = %d ", nErrCode );
+		return -4;
+	}
+
+	for( int i = 0; i < tagHead.WareCount; i++ )
+	{
+		tagSZL1ReferenceExtension_LF168	tagExtension = { 0 };
+
+		strncpy( tagExtension.Code, pNameEx[i].Code, sizeof(pNameEx[i].Code) );
+		tagExtension.ExTts = pNameEx[i].ExTts;
+		tagExtension.MaxExVol = pNameEx[i].MaxExVol;
+		tagExtension.MinExVol = pNameEx[i].MinExVol;
+		tagExtension.PLimit = pNameEx[i].PLimit;
+		tagExtension.StopFlag = pNameEx[i].SFlag;
+		tagExtension.Worth = pNameEx[i].Worth;
+		QuoCollector::GetCollector()->OnImage( 168, (char*)&tagExtension, sizeof(tagSZL1ReferenceExtension_LF168), false );
+	}
+
+	//4,获取指数快照
+	tagCcComm_IndexData*	pIndex = (tagCcComm_IndexData*)m_pDataBuff;
+	if( (nErrCode = m_oSZL1Dll.GetIndex( 0, pIndex, tagHead.WareCount )) < 0 )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : cannot fetch indextable from dll, errorcode = %d ", nErrCode );
+		return -5;
+	}
+
+	for( int i = 0; i < nErrCode; ++i )
+	{
+		tagSZL1SnapData_LF169		tagIndexLF = { 0 };
+		tagSZL1SnapData_HF170		tagIndexHF = { 0 };
+
+		::strncpy( tagIndexLF.Code, pIndex[i].Code, sizeof(pIndex[i].Code) );
+		::strncpy( tagIndexHF.Code, pIndex[i].Code, sizeof(pIndex[i].Code) );
+		tagIndexLF.Open = pIndex[i].Open;
+		tagIndexLF.PreClose = pIndex[i].Close;
+		tagIndexHF.Amount = pIndex[i].Amount;
+		tagIndexHF.Volume = pIndex[i].Volume;
+		tagIndexHF.Now = pIndex[i].Now;
+		tagIndexHF.High = pIndex[i].High;
+		tagIndexHF.Low = pIndex[i].Low;
+
+		QuoCollector::GetCollector()->OnImage( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), false );
+		QuoCollector::GetCollector()->OnImage( 170, (char*)&tagIndexHF, sizeof(tagSZL1SnapData_HF170), false );
+	}
+
+	//5,获取个股快照
+	tagCcComm_StockData5*	pStock = (tagCcComm_StockData5*)m_pDataBuff;
+	if( (nErrCode = m_oSZL1Dll.GetStock(0, pStock, tagHead.WareCount)) < 0 )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : cannot fetch stocktable from dll, errorcode = %d ", nErrCode );
+		return -6;
+	}
+
+	for (int i = 0; i < nErrCode; ++i)
+	{
+		tagSZL1SnapData_LF169		tagStockLF = { 0 };
+		tagSZL1SnapData_HF170		tagStockHF = { 0 };
+		tagSZL1SnapBuySell_HF171	tagStockBS = { 0 };
+
+		::strncpy( tagStockLF.Code, pStock[i].Code, sizeof(pStock[i].Code) );
+		::strncpy( tagStockHF.Code, pStock[i].Code, sizeof(pStock[i].Code) );
+		::strncpy( tagStockBS.Code, pStock[i].Code, sizeof(pStock[i].Code) );
+
+		tagStockLF.Open = pStock[i].Open;
+		tagStockLF.PreClose = pStock[i].Close;
+		tagStockHF.Amount = pStock[i].Amount;
+		tagStockHF.High = pStock[i].High;
+		tagStockHF.Low = pStock[i].Low;
+		tagStockHF.Now = pStock[i].Now;
+		tagStockHF.Volume = pStock[i].Volume;
+		tagStockHF.IOPV = pStock[i].Voip;
+
+		memcpy( tagStockBS.Buy, pStock[i].Buy, sizeof(tagStockBS.Buy) );
+		memcpy( tagStockBS.Sell, pStock[i].Sell, sizeof(tagStockBS.Sell) );
+
+		QuoCollector::GetCollector()->OnImage( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), false );
+		QuoCollector::GetCollector()->OnImage( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), false );
+		QuoCollector::GetCollector()->OnImage( 171, (char*)&tagStockBS, sizeof(tagSZL1SnapBuySell_HF171), true );
+	}
+
+	return 0;
 }
 
 
@@ -312,22 +398,15 @@ void Quotation::OnPushPreName(const char *buf, size_t len) {
     }*/
 }
 
-void Quotation::OnPushMarketInfo(const char *buf, size_t len) {
-/*    tagCcComm_MarketStatusInfo *marketinfo = (tagCcComm_MarketStatusInfo *)buf;
-    
-    DF_MarketStatus data = {0};
-    
-    data.date = marketinfo->MarketDate;
-    data.market = kMarket;
-    data.status = marketinfo->MarketStatus;
-    data.time = marketinfo->MarketTime;
-    if (data.date != date_) {
-        LoadStaticData();
-        date_ = data.date;
-    }
-    if (g_pushcb) {
-        g_pushcb(kMarket, 8, (char *)&data, sizeof data, "", 0);
-    }*/
+void Quotation::OnPushMarketInfo(const char *buf, size_t len)
+{
+	tagSZL1MarketStatus_HF166		tagMkStatus = { 0 };
+	tagCcComm_MarketStatusInfo*		marketinfo = (tagCcComm_MarketStatusInfo *)buf;
+
+	tagMkStatus.MarketStatus = 1;
+	::strcpy( tagMkStatus.Key, "status" );
+	tagMkStatus.MarketTime = marketinfo->MarketTime;
+	QuoCollector::GetCollector()->OnData( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), true );
 }
 
 void Quotation::OnPushOrderQueue(const char *buf, size_t len) {
@@ -350,129 +429,123 @@ void Quotation::OnPushOrderQueue(const char *buf, size_t len) {
     }*/
 }
 
-void Quotation::OnPushIndex(const char * buf, size_t len) {
-/*    tagCcComm_IndexData *index = (tagCcComm_IndexData *)buf;
+void Quotation::OnPushIndex(const char * buf, size_t len)
+{
+	tagSZL1SnapData_LF169		tagIndexLF = { 0 };
+	tagSZL1SnapData_HF170		tagIndexHF = { 0 };
+	tagCcComm_IndexData*		index = (tagCcComm_IndexData *)buf;
 
-    DF_IndexData data = {0};
-    memcpy(data.code, index->Code, 6);
-    data.serial = GetNameTable()->GetIndex(data.code);
-    double scale = GetScale(data.serial);
-    data.amount = index->Amount;
-    data.high = index->High * scale + 0.5;
-    data.low = index->Low * scale + 0.5;
-    data.now = index->Now * scale + 0.5;
-    data.open = index->Open * scale + 0.5;
-    data.preclose = index->Close * scale + 0.5;
-    data.volume = index->Volume;
-    GetIndexTable()->Put(data);
-    if (g_pushcb) {
-        g_pushcb(kMarket, 5, (char *)&data, sizeof data, data.code, 6);
-    }*/
+	::strncpy( tagIndexLF.Code, index->Code, sizeof(index->Code) );
+	::strncpy( tagIndexHF.Code, index->Code, sizeof(index->Code) );
+	tagIndexLF.Open = index->Open;
+	tagIndexLF.PreClose = index->Close;
+	tagIndexHF.Amount = index->Amount;
+	tagIndexHF.Volume = index->Volume;
+	tagIndexHF.Now = index->Now;
+	tagIndexHF.High = index->High;
+	tagIndexHF.Low = index->Low;
+
+	QuoCollector::GetCollector()->OnData( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), true );
+	QuoCollector::GetCollector()->OnData( 170, (char*)&tagIndexHF, sizeof(tagSZL1SnapData_HF170), true );
 }
 
-void Quotation::OnPushStock(const char * buf, size_t InSize) {
-/*    tagCcComm_StockData5 *stock = (tagCcComm_StockData5 *)buf;
+void Quotation::OnPushStock(const char * buf, size_t InSize)
+{
+	tagSZL1SnapData_LF169		tagStockLF = { 0 };
+	tagSZL1SnapData_HF170		tagStockHF = { 0 };
+	tagSZL1SnapBuySell_HF171	tagStockBS = { 0 };
+	tagCcComm_StockData5*		stock = (tagCcComm_StockData5 *)buf;
 
-    DF_StockData data = {0};
-    memcpy(data.code, stock->Code, 6);
-    data.serial = GetNameTable()->GetIndex(data.code);
-    int rv = GetStockTable()->Get(GetIndexTable()->GetCount(), data.serial, &data);
+	::strncpy( tagStockLF.Code, stock->Code, sizeof(stock->Code) );
+	::strncpy( tagStockHF.Code, stock->Code, sizeof(stock->Code) );
+	::strncpy( tagStockBS.Code, stock->Code, sizeof(stock->Code) );
 
-    double scale = GetScale(data.serial);
+	tagStockLF.Open = stock->Open;
+	tagStockLF.PreClose = stock->Close;
+	tagStockHF.Amount = stock->Amount;
+	tagStockHF.High = stock->High;
+	tagStockHF.Low = stock->Low;
+	tagStockHF.Now = stock->Now;
+	tagStockHF.Volume = stock->Volume;
+	tagStockHF.IOPV = stock->Voip;
 
-    data.amount = stock->Amount;
-    for (int i = 0; i < 10; ++i) {
-        data.buy[i].price = stock->Buy[i].Price * scale + 0.5;
-        data.buy[i].volume = stock->Buy[i].Volume;
-        data.sell[i].price = stock->Sell[i].Price * scale + 0.5;
-        data.sell[i].volume = stock->Sell[i].Volume;
-    }
-    data.high = stock->High * scale + 0.5;
-    data.highlimit = stock->HighLimit * scale + 0.5;
-    data.iopv = stock->Voip;
-    data.low = stock->Low * scale + 0.5;
-    data.lowlimit = stock->LowLimit * scale + 0.5;
-    data.now = stock->Now * scale + 0.5;
-    data.open = stock->Open * scale + 0.5;
-    data.preclose = stock->Close * scale + 0.5;
-    data.records = stock->Records;
-    data.vbuyprice = stock->VBuyPrice * scale + 0.5;
-    data.vbuyvolume = stock->VBuyVolume;
-    data.volume = stock->Volume;
-    data.vsellprice = stock->VSellPrice * scale;
-    data.vsellvolume = stock->VSellVolume;
-    data.status = 0;
-    GetStockTable()->Put(GetIndexTable()->GetCount(), data);
-    if (g_pushcb) {
-        g_pushcb(kMarket, 6, (char *)&data, sizeof data, data.code, 6);
-    }*/
+	memcpy( tagStockBS.Buy, stock->Buy, sizeof(tagStockBS.Buy) );
+	memcpy( tagStockBS.Sell, stock->Sell, sizeof(tagStockBS.Sell) );
+
+	QuoCollector::GetCollector()->OnData( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), true );
+	QuoCollector::GetCollector()->OnData( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), true );
+	QuoCollector::GetCollector()->OnData( 171, (char*)&tagStockBS, sizeof(tagSZL1SnapBuySell_HF171), true );
 }
 
 void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, const char * InBuf, unsigned short InSize, unsigned char marketid )
 {
-/*    if (ChildType == 9) {
-        tagCcComm_TimeInfo *updataTime;
-        DF_StockData stock;
-        char code[7];
-        int serial;
+	int								nErrCode = 0;
+	tagSZL1MarketStatus_HF166		tagMkStatus = { 0 };
+	int								offset = sizeof(tagCcComm_TimeInfo);
+	tagCcComm_TimeInfo*				updataTime = (tagCcComm_TimeInfo*)InBuf;
 
-        if ((InSize < sizeof *updataTime)) {	
-            return;		
-        }
-        
-        updataTime = (tagCcComm_TimeInfo *)InBuf;
-        
-        char  type;
-        int offset = sizeof *updataTime;
-        while (offset < InSize) {
-            type = InBuf[offset];
+	if( (InSize < sizeof(tagCcComm_TimeInfo)) )
+	{
+		return;
+	}
+
+    if( ChildType == 9 )
+	{
+        while( offset < InSize )
+		{
+            char	type = InBuf[offset];
             offset += 1;
-            switch (type) {
-                case 0:
-                    memcpy(code, InBuf + offset, sizeof code);
-                    offset += sizeof code;
-                    serial = GetNameTable()->GetIndex(code);
-                    if (serial != -1) {
-                        GetStockTable()->Get(GetIndexTable()->GetCount(), serial, &stock);
-                        stock.status = (char)code[6];
-                        if (g_pushcb) {
-                            g_pushcb(kMarket, 6, (char *)&stock, sizeof stock, stock.code, 6);
-                        }
-                    }
-                    break;
-                case 1:
-                    offset += sizeof(unsigned long)+6;
-                    break;
-                case 2:
-                    offset += sizeof(unsigned long)+6;
-                    break;
-                case 3:
-                    offset += sizeof(unsigned long)+6;
-                    break;
-                case 4:
-                    offset += sizeof(unsigned long)+6;
-                    break;
-                default:
-                    return;
-                }
+
+            switch( type )
+			{
+            case 0:
+				{
+					tagSZL1ReferenceExtension_LF168		tagExtension = { 0 };
+					::memcpy( tagExtension.Code, InBuf + offset, 6 );
+					offset += 6;
+
+					if( (nErrCode=QuoCollector::GetCollector()->OnQuery( 168, (char*)&tagExtension, sizeof(tagSZL1ReferenceExtension_LF168) )) <= 0 )
+					{
+						QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::OnInnerPush() : code[%s] is not existed in table, errorcode = %d ", tagExtension.Code, nErrCode );
+					}
+					else
+					{
+						tagExtension.StopFlag = *(InBuf + 6);
+						QuoCollector::GetCollector()->OnImage( 168, (char*)&tagExtension, sizeof(tagSZL1ReferenceExtension_LF168), true );
+					}
+
+					offset++;
+				}
+                break;
+            case 1:
+                offset += sizeof(unsigned long)+6;
+                break;
+            case 2:
+                offset += sizeof(unsigned long)+6;
+                break;
+            case 3:
+                offset += sizeof(unsigned long)+6;
+                break;
+            case 4:
+                offset += sizeof(unsigned long)+6;
+                break;
+            default:
+                return;
+            }
         }	
-    } else if (ChildType == 59) {
-        tagCcComm_TimeInfo *	updataTime = NULL;
-        int						Err = 0;
-        
-        if( ( InSize < sizeof( tagCcComm_TimeInfo ) ) )
-        {	
-            return;		
-        }
-        
-        updataTime = (tagCcComm_TimeInfo *)InBuf;
-        
-        char  type;
-        int offset = sizeof(tagCcComm_TimeInfo);
+    }
+	else if( ChildType == 59 )
+	{
         while( offset < InSize )
         {
-            type = InBuf[offset];
+            char	type = InBuf[offset];
             offset += 1;
+
+			tagMkStatus.MarketStatus = 1;
+			::strcpy( tagMkStatus.Key, "status" );
+			tagMkStatus.MarketTime = updataTime->CurTime;
+			QuoCollector::GetCollector()->OnData( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), true );
+
             switch( type )
             {
             case 0:
@@ -502,7 +575,7 @@ void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, co
                     tagCcComm_OrderQueueHeadSzL2 *	pOrderHead;
                     pOrderHead = (tagCcComm_OrderQueueHeadSzL2 *)(InBuf+offset);
                     offset += sizeof(tagCcComm_OrderQueueHeadSzL2);
-                    
+
                     tagCcComm_OrderVolDetail * pDetail = (tagCcComm_OrderVolDetail *)(InBuf + offset);
                     
                     offset += pOrderHead->VolCount*sizeof(tagCcComm_OrderVolDetail);
@@ -526,7 +599,6 @@ void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, co
         }
 	    return;	
     }
-*/
 }
 
 void Quotation::OnPush( unsigned char MainType, unsigned char ChildType, const char *InBuf, unsigned short InSize, unsigned char Marketid, unsigned short UnitNo, bool SendDirectFlag )

@@ -102,8 +102,9 @@ public:///< 公共方法函数
 
 	/**
 	 * @brief			构建快照数据
+	 * @return			==0			成功
 	 */
-	void				BuildImageData();
+	int					BuildImageData();
     int GetTime();
     int GetDate();
 	double GetScale(int index);

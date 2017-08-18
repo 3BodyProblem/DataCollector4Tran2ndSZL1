@@ -107,16 +107,6 @@ int Configuration::Initialize()
 		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : shutdown dump function." );
 	}
 
-	m_sMktdt03FilePath = oIniFile.getStringValue( std::string("SRV"), std::string("mktdt00"), nErrCode );
-	if( 0 != nErrCode )	{
-		m_sMktdt03FilePath = "./mktdt03.txt";
-	}
-
-	m_sReffFilePath = oIniFile.getStringValue( std::string("SRV"), std::string("fjy"), nErrCode );
-	if( 0 != nErrCode )	{
-		m_sReffFilePath = "./reff";
-	}
-
 	return 0;
 }
 

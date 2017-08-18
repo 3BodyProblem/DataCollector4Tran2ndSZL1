@@ -53,6 +53,9 @@ public:
 	int	GetDataFrameCount(tagDll_GetDataFrameCountIn * In,tagDll_GetFrameCountOut * Out);
 
 	int	GetDataFrame(tagDll_GetOneDataFrameIn * In,tagDll_GetOneDataFrameOut * Out);
+
+	// 是否工作中
+	bool		IsWorking();
 public:
 	//显示L2 DLL 中的help信息
 	void	ShowDllHelp(unsigned long ulCmdSerial);

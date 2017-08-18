@@ -39,7 +39,7 @@ typedef struct
 	char						ContractID[20];				///< 合约代码
 	char						Name[64];					///< 合约名称
 	unsigned char				Kind;						///< 证券类型
-} tagSZL1ReferenceData_LF163;
+} tagSZL1ReferenceData_LF167;
 
 
 typedef struct
@@ -51,7 +51,7 @@ typedef struct
 	unsigned int				ExTts;						///< 交易单位
 	unsigned int				MaxExVol;					///< 最大交易数量
 	unsigned int				MinExVol;					///< 最小交易数量
-} tagSZL1ReferenceExtension_LF164;
+} tagSZL1ReferenceExtension_LF168;
 
 
 typedef struct
@@ -62,7 +62,7 @@ typedef struct
 	unsigned int				Close;						///< 今收价[*放大倍数]
 	unsigned int				HighLimit;					///< 涨停限价[*放大倍数]
 	unsigned int				LowLimit;					///< 跌停限价[*放大倍数]
-} tagSZL1SnapData_LF165;
+} tagSZL1SnapData_LF169;
 
 
 typedef struct
@@ -71,10 +71,10 @@ typedef struct
 	unsigned int				Now;						///< 最新价[*放大倍数]
 	unsigned int				High;						///< 最高价[*放大倍数]
 	unsigned int				Low;						///< 最低价[*放大倍数]
+	unsigned int				IOPV;
 	double						Amount;						///< 总成交金额[元]
 	unsigned __int64			Volume;						///< 总成交量[股/张]
-	unsigned __int64			Position;					///< 持仓量
-} tagSZL1SnapData_HF166;
+} tagSZL1SnapData_HF170;
 
 
 typedef struct
@@ -89,7 +89,7 @@ typedef struct
 	char						Code[20];					///< 合约代码
 	tagSZL1BuySellItem			Buy[5];						///< 买五档
 	tagSZL1BuySellItem			Sell[5];					///< 卖五档
-} tagSZL1SnapBuySell_HF167;
+} tagSZL1SnapBuySell_HF171;
 
 
 

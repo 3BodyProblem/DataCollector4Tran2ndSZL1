@@ -74,36 +74,19 @@ int QuoCollector::RecoverQuotation()
 		return -1;
 	}
 
-/*
-	for( nSec = 0; nSec < 60 && ET_SS_WORKING != m_oQuotationData.GetWorkStatus(); nSec++ )
-	{
-		SimpleTask::Sleep( 1000 * 1 );
-	}
-
-	if( ET_SS_WORKING == m_oQuotationData.GetWorkStatus() )
-	{
-		return 0;
-	}
-	else
-	{
-		m_oQuotationData.Destroy();
-		QuoCollector::GetCollector()->OnLog( TLV_WARN, "QuoCollector::RecoverQuotation() : overtime [> %d sec.], errorcode=%d", nSec, nErrorCode );
-		return -2;
-	}*/
-
 	return 0;
 }
 
 enum E_SS_Status QuoCollector::GetCollectorStatus( char* pszStatusDesc, unsigned int& nStrLen )
 {
 	Configuration&		refCnf = Configuration::GetConfig();
-//	WorkStatus&		refStatus = m_oQuotationData.GetWorkStatus();
-//	std::string&		sStatus = WorkStatus::CastStatusStr( (enum E_SS_Status)refStatus );
+	WorkStatus&			refStatus = m_oQuotationData.GetWorkStatus();
+	std::string&		sStatus = WorkStatus::CastStatusStr( (enum E_SS_Status)refStatus );
 
-//	nStrLen = ::sprintf( pszStatusDesc, "市场编号=%u,快照路径=%s,连接状态=%s"
-//		, refCnf.GetMarketID(), refCnf.GetDumpFolder().c_str(), sStatus.c_str() );
+	nStrLen = ::sprintf( pszStatusDesc, "市场编号=%u,快照路径=%s,连接状态=%s"
+						, refCnf.GetMarketID(), refCnf.GetDumpFolder().c_str(), sStatus.c_str() );
 
-	return (enum E_SS_Status)0;//(m_oQuotationData.GetWorkStatus());
+	return refStatus;
 }
 
 

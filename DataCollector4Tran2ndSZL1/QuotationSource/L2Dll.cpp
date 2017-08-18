@@ -16,7 +16,6 @@ L2Dll::~L2Dll()
 
 int L2Dll::Instance(const char *dll)
 {
-	int							nSec;
 	int							nRetVal;
 	tagDll_DataCenterInput		tagDcInput;
 
@@ -69,22 +68,6 @@ int L2Dll::Instance(const char *dll)
 	m_tagDllFunc.GetBaseInfo(&BaseInfo);
 	m_pControlIO = BaseInfo.drvControlClassPtr;
 
-	for( int nSec = 0; nSec < 60*2; nSec++ )
-	{
-		if( true == m_tagDllFunc.IsWorking() )
-		{
-			return 1;
-		}
-
-		::Sleep( 1000 );
-	}
-
-	if( nSec >= 60*2 )
-	{
-		Release();
-		return -2;
-	}
-
 	return 1;
 }
 
@@ -121,6 +104,15 @@ int	L2Dll::GetMarketInfo( tagCcComm_MarketInfoHead * pHead, tagCcComm_MarketInfo
 	return nRetVal;
 }
 
+bool L2Dll::IsWorking()
+{
+	if( NULL == m_tagDllFunc.IsWorking )
+	{
+		return false;
+	}
+
+	return m_tagDllFunc.IsWorking();
+}
 	
 int	L2Dll::GetDataFrameCount(tagDll_GetDataFrameCountIn * In,tagDll_GetFrameCountOut * Out)
 {
@@ -229,7 +221,7 @@ int L2Dll::GetStock( unsigned short dwStartNo, tagCcComm_StockData5 * pValue, in
 {
 	assert( pValue != NULL && nCount > 0 );
 	
-	return GetData( 2, 13, dwStartNo, pValue, nCount*sizeof(tagCcComm_StockData5), sizeof(tagCcComm_StockData5) );
+	return GetData( 2, 7, dwStartNo, pValue, nCount*sizeof(tagCcComm_StockData5), sizeof(tagCcComm_StockData5) );
 }
 
 unsigned long	L2Dll::GetDataL2Ver()
