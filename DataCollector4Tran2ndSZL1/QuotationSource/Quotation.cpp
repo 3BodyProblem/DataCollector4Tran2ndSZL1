@@ -513,7 +513,7 @@ void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, co
             }
         }	
     }
-	else if( ChildType == 59 )
+	else if( ChildType == 50 )
 	{
         while( offset < InSize )
         {
