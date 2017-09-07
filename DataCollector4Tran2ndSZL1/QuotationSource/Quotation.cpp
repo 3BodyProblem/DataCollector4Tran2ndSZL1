@@ -74,6 +74,10 @@ WorkStatus&	WorkStatus::operator= ( enum E_SS_Status eWorkStatus )
 ///< ----------------------------------------------------------------
 
 
+T_MAP_RATE		Quotation::m_mapRate;
+T_MAP_KIND		Quotation::m_mapKind;
+
+
 Quotation::Quotation()
  : m_pDataBuff( NULL )
 {
@@ -195,6 +199,8 @@ int Quotation::BuildImageData()
 		return -2;
 	}
 
+	m_mapRate.clear();
+	m_mapKind.clear();
 	::strcpy( tagMkStatus.Key, "status" );
 	tagMkStatus.MarketStatus = tagHead.MarketStatus;
 	tagMkStatus.MarketTime = tagHead.Time;
@@ -204,8 +210,6 @@ int Quotation::BuildImageData()
 	tagMkInfo.KindCount = tagHead.KindCount;
 	tagMkInfo.MarketDate = tagHead.Date;
 	tagMkInfo.MarketID = Configuration::GetConfig().GetMarketID();
-	::memcpy( &(tagMkInfo.MarketPeriods), &(tagHead.Periods), sizeof(tagHead.Periods) );
-	tagMkInfo.PeriodsCount = tagHead.PeriodsCount;
 	tagMkInfo.WareCount = tagHead.WareCount;
 	QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
 
@@ -219,7 +223,8 @@ int Quotation::BuildImageData()
 		::strncpy( tagCategory.KindName, tagDetail[i].KindName, sizeof(tagDetail[i].KindName) );
 		tagCategory.LotSize = tagDetail[i].LotSize;
 		tagCategory.PriceRate = tagDetail[i].PriceRate;
-		tagCategory.WareCount = tagDetail[i].WareCount;
+		::memcpy( &(tagCategory.MarketPeriods), &(tagHead.Periods), sizeof(tagHead.Periods) );
+		tagCategory.PeriodsCount = tagHead.PeriodsCount;
 
 		QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
 	}

@@ -10,8 +10,6 @@ typedef struct
 	unsigned int				MarketDate;					///< 市场日期
 	unsigned int				KindCount;					///< 类别数量
 	unsigned int				WareCount;					///< 商品数量
-	unsigned int				PeriodsCount;				///< 交易时段信息列表长度
-	unsigned int				MarketPeriods[8][2];		///< 交易时段描述信息列表
 } tagSZL1MarketInfo_LF164;
 
 
@@ -20,8 +18,9 @@ typedef struct
 	char						Key[20];					///< 索引键值
 	char						KindName[64];				///< 类别的名称
 	unsigned int				PriceRate;					///< 价格放大倍数[10的多少次方]
-	unsigned int				LotSize;					///< “手”比率
-	unsigned int				WareCount;					///< 该分类的商品数量
+	unsigned int				LotSize;					///< 一手等于几张合约
+	unsigned int				PeriodsCount;				///< 交易时段信息列表长度
+	unsigned int				MarketPeriods[10][2];		///< 交易时段描述信息列表
 } tagSZL1KindDetail_LF165;
 
 
