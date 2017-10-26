@@ -124,7 +124,7 @@ int Quotation::Initialize()
 			return -2;
 		}
 
-		for( nSec = 0; nSec < 60*2; nSec++ )
+		for( nSec = 0; nSec < 25; nSec++ )
 		{
 			SimpleTask::Sleep(1000);
 
@@ -144,9 +144,9 @@ int Quotation::Initialize()
 			}
 		}
 
-		if( nSec >= 60*2 )
+		if( nSec >= 25 )
 		{
-			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : overtime > (2mins)" );
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : overtime > (25 sec)" );
 			Release();
 			return -3;
 		}
@@ -426,8 +426,8 @@ void Quotation::OnPushIndex(const char * buf, size_t len)
 	tagIndexHF.High = index->High;
 	tagIndexHF.Low = index->Low;
 
-	QuoCollector::GetCollector()->OnData( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), true );
 	QuoCollector::GetCollector()->OnData( 170, (char*)&tagIndexHF, sizeof(tagSZL1SnapData_HF170), true );
+	QuoCollector::GetCollector()->OnData( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), true );
 }
 
 void Quotation::OnPushStock(const char * buf, size_t InSize)
@@ -453,9 +453,9 @@ void Quotation::OnPushStock(const char * buf, size_t InSize)
 	memcpy( tagStockBS.Buy, stock->Buy, sizeof(tagStockBS.Buy) );
 	memcpy( tagStockBS.Sell, stock->Sell, sizeof(tagStockBS.Sell) );
 
-	QuoCollector::GetCollector()->OnData( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), true );
-	QuoCollector::GetCollector()->OnData( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), true );
 	QuoCollector::GetCollector()->OnData( 171, (char*)&tagStockBS, sizeof(tagSZL1SnapBuySell_HF171), true );
+	QuoCollector::GetCollector()->OnData( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), true );
+	QuoCollector::GetCollector()->OnData( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), true );
 }
 
 void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, const char * InBuf, unsigned short InSize, unsigned char marketid )
