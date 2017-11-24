@@ -7,7 +7,7 @@
 #include "DataCollector4Tran2ndSZL1.h"
 
 
-const std::string		g_sVersion = "1.1.2";
+const std::string		g_sVersion = "1.2.3";
 
 
 QuoCollector::QuoCollector()

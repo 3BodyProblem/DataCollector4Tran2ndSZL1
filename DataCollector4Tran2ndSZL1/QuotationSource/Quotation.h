@@ -8,6 +8,7 @@
 #include <string>
 #include <stdexcept>
 #include "L2Dll.h"
+#include "DataDump.h"
 #include "../Configuration.h"
 #include "../Infrastructure/Lock.h"
 #include "../Infrastructure/Thread.h"
@@ -79,7 +80,7 @@ typedef			std::map<std::string,tagSZL1KindDetail_LF165>		T_MAP_KIND;			///< 根据
  * @detail			封装了针对商品期货期权各市场的初始化、管理控制等方面的方法
  * @author			barry
  */
-class Quotation
+class Quotation : public SimpleTask
 {
 public:
 	Quotation();
@@ -110,6 +111,13 @@ public:///< 公共方法函数
 	 */
 	int					BuildImageData();
 
+	/**
+	 * @brief			加载落盘数据
+	 * @param[in]		sFilePath			落盘文件路径
+	 * @return			>=0					成功
+	 */
+	int					LoadImageFromFile( std::string sFilePath );
+
     static void			OnPush( unsigned char MainType, unsigned char ChildType, const char *InBuf, unsigned short InSize, unsigned char Marketid, unsigned short UnitNo, bool SendDirectFlag );
 
     void				OnInnerPush( unsigned char MainType, unsigned char ChildType, const char * InBuf, unsigned short InSize, unsigned char marketid );
@@ -124,6 +132,14 @@ public:///< 公共方法函数
     void OnPushPreClose(const char *buf, size_t len);
     void OnPushPreName(const char *buf, size_t len);
 
+protected:
+	/**
+	 * @brief			任务函数(内循环)
+	 * @return			==0					成功
+						!=0					失败
+	 */
+	int					Execute();
+
 private:
 	CriticalObject		m_oLock;				///< 临界区对象
 	WorkStatus			m_oWorkStatus;			///< 工作状态
@@ -131,6 +147,8 @@ private:
 	char*				m_pDataBuff;			///< 数据临时缓存
 	static T_MAP_RATE	m_mapRate;				///< 各分类的放大倍数
 	static T_MAP_KIND	m_mapKind;				///< 分类信息集合
+private:
+	QuotationRecorder	m_oDataRecorder;		///< 行情落盘对象
 };
 
 

@@ -69,21 +69,35 @@ public:
 	unsigned int				GetMarketID() const;
 
 	/**
-	 * @brief					获取行情文件路径
+	 * @brief					是否为播放模式
+	 * @return					true				行情自动播放模式
 	 */
-	const std::string&			GetMktdt03FilePath() const;
+	bool						IsBroadcastModel() const;
 
 	/**
-	 * @brief					获取非交易文件路径
+	 * @brief					获取请求文件的路径
 	 */
-	const std::string&			GetReffFilePath() const;
+	std::string					GetTradeFilePath() const;
+
+	/**
+	 * @brief					获取行情文件的路径
+	 */
+	std::string					GetQuotationFilePath() const;
+
+	/**
+	 * @brief					获取正常速度播放的开始时间
+	 */
+	unsigned int				GetBroadcastBeginTime() const;
 
 private:
 	unsigned int				m_nMarketID;			///< 市场编号
 	std::string					m_sExchangeID;			///< 交易所编号
 	std::string					m_sDumpFileFolder;		///< 快照落盘路径(需要有文件名)
-	std::string					m_sMktdt03FilePath;		///< 行情文件路径
-	std::string					m_sReffFilePath;			///< 非交易文件配置路径(不包含文件中的日期部分)
+private:
+	bool						m_bBroadcastModel;		///< 数据自动播放模式
+	std::string					m_sBcTradeFile;			///< 播放的请求文件路径
+	std::string					m_sBcQuotationFile;		///< 播放的实时文件路径
+	unsigned int				m_nBcBeginTime;			///< 正常速度的播放时间
 };
 
 

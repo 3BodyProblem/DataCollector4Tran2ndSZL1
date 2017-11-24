@@ -114,53 +114,139 @@ int Quotation::Initialize()
 		int							nErrCode = 0;
 		tagCcComm_MarketInfoHead	tagHead = { 0 };
 		tagCcComm_MarketInfoDetail	tagDetail[32] = { 0 };
-		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Quotation Is Activating............" );
+		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ [%s] Quotation Is Activating............"
+											, (false==Configuration::GetConfig().IsBroadcastModel())? "NORMAL" : "BROADCAST" );
 
-		Release();
-		if( m_oSZL1Dll.Instance( "tran2ndsz.dll" ) < 0 )
+		if( false == Configuration::GetConfig().IsBroadcastModel() )
 		{
-			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 initialize tran2ndsz.dll" );
 			Release();
-			return -2;
-		}
-
-		for( nSec = 0; nSec < 25; nSec++ )
-		{
-			SimpleTask::Sleep(1000);
-
-			if( true == m_oSZL1Dll.IsWorking() )
+			if( m_oSZL1Dll.Instance( "tran2ndsz.dll" ) < 0 )
 			{
-				if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
+				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 initialize tran2ndsz.dll" );
+				Release();
+				return -2;
+			}
+
+			for( nSec = 0; nSec < 25; nSec++ )
+			{
+				SimpleTask::Sleep(1000);
+
+				if( true == m_oSZL1Dll.IsWorking() )
 				{
-					continue;
-				}
+					if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
+					{
+						continue;
+					}
 
-				if( tagHead.MarketStatus <= 0 )
-				{	
-					continue;
-				}
+					if( tagHead.MarketStatus <= 0 )
+					{	
+						continue;
+					}
 
-				break;
+					break;
+				}
+			}
+
+			if( nSec >= 25 )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : overtime > (25 sec)" );
+				Release();
+				return -3;
+			}
+
+			if( (nErrCode = BuildImageData()) < 0 )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 build image data 2 database" );
+				return -4;
+			}
+
+			m_oWorkStatus = ET_SS_WORKING;				///< 更新Quotation会话的状态
+
+			char			pszTmpFile[1024] = { 0 };			///< 准备行情数据落盘
+			::sprintf( pszTmpFile, "Quotation_%u_%d.dmp", DateTime::Now().DateToLong(), DateTime::Now().TimeToLong() );
+			int				nRet = m_oDataRecorder.OpenFile( JoinPath( Configuration::GetConfig().GetDumpFolder(), pszTmpFile ).c_str(), false );
+			if( nRet != 0 )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_ERROR, "Quotation::Initialize() : cannot generate dump file, errorcode = %d", nRet );
 			}
 		}
-
-		if( nSec >= 25 )
+		else
 		{
-			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : overtime > (25 sec)" );
-			Release();
-			return -3;
-		}
+			if( LoadImageFromFile( Configuration::GetConfig().GetTradeFilePath().c_str() ) < 0 )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::FreshCache() : failed 2 build image data" );
+				return -4;
+			}
 
-		if( (nErrCode = BuildImageData()) < 0 )
-		{
-			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Initialize() : failed 2 build image data 2 database" );
-			return -4;
-		}
+			m_oWorkStatus = ET_SS_DISCONNECTED;								///< 更新CTPQuotation会话的状态
 
-		m_oWorkStatus = ET_SS_WORKING;				///< 更新Quotation会话的状态
+			if( 0 != SimpleTask::Activate() )
+			{
+				QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::Activate() : failed 2 activate broadcast thread..." );
+				return -1;
+			}
+
+			m_oWorkStatus = ET_SS_WORKING;				///< 更新Quotation会话的状态
+		}
 
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Initialize() : ............ Quotation Activated!.............." );
 	}
+
+	return 0;
+}
+
+int Quotation::LoadImageFromFile( std::string sFilePath )
+{
+	QuotationRecover		oDataRecover;
+
+	if( 0 != oDataRecover.OpenFile( sFilePath.c_str() ) )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::LoadImageFromFile() : failed 2 open static file : %s", sFilePath.c_str() );
+		return -1;
+	}
+
+	while( true )
+	{
+		unsigned short				nMsgID = 0;
+		int							nLen = 0;
+		char						pszData[1024] = { 0 };
+
+		if( (nLen=oDataRecover.Read( nMsgID, pszData, sizeof(pszData) )) <= 0  )
+		{
+			break;
+		}
+
+		QuoCollector::GetCollector()->OnImage( nMsgID, (char*)&pszData, nLen, oDataRecover.IsEOF() );
+	}
+
+	return 0;
+}
+
+int Quotation::Execute()
+{
+	QuotationRecover		oDataRecover;
+
+	if( 0 != oDataRecover.OpenFile( Configuration::GetConfig().GetQuotationFilePath().c_str(), Configuration::GetConfig().GetBroadcastBeginTime() ) )
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_ERROR, "Quotation::Execute() : failed 2 open snap file : %s", Configuration::GetConfig().GetQuotationFilePath().c_str() );
+		return -1;
+	}
+
+	while( true )
+	{
+		unsigned short				nMsgID = 0;
+		int							nLen = 0;
+		char						pszData[1024] = { 0 };
+
+		if( (nLen=oDataRecover.Read( nMsgID, pszData, sizeof(pszData) )) <= 0  )
+		{
+			break;
+		}
+
+		QuoCollector::GetCollector()->OnData( nMsgID, (char*)&pszData, nLen, true );
+	}
+
+	QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Execute() : End of Quotation File..." );
 
 	return 0;
 }
@@ -171,7 +257,8 @@ int Quotation::Release()
 	{
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroying .............." );
 
-		m_oWorkStatus = ET_SS_UNACTIVE;	///< 更新Quotation会话的状态
+		m_oWorkStatus = ET_SS_UNACTIVE;		///< 更新Quotation会话的状态
+		m_oDataRecorder.CloseFile();		///< 关闭落盘文件的句柄
 
 		QuoCollector::GetCollector()->OnLog( TLV_INFO, "Quotation::Release() : ............ Destroyed! .............." );
 	}
@@ -186,6 +273,7 @@ int Quotation::BuildImageData()
 	tagCcComm_MarketInfoDetail		tagDetail[32] = { 0 };
 	tagSZL1MarketInfo_LF164			tagMkInfo = { 0 };
 	tagSZL1MarketStatus_HF166		tagMkStatus = { 0 };
+	QuotationRecorder				oDataRecorder;				///< 码表/快照落盘
 
 	if( (nErrCode = m_oSZL1Dll.GetMarketInfo( &tagHead, tagDetail, sizeof tagDetail/sizeof tagDetail[0] )) < 0 )
 	{
@@ -199,17 +287,27 @@ int Quotation::BuildImageData()
 		return -2;
 	}
 
+	char							pszTmpFile[1024] = { 0 };	///< 准备请求的静态数据落盘
+	::sprintf( pszTmpFile, "Build_%u_%u.dmp", DateTime::Now().DateToLong(), DateTime::Now().TimeToLong() );
+	if( 0 != oDataRecorder.OpenFile( JoinPath( Configuration::GetConfig().GetDumpFolder(), pszTmpFile ).c_str(), true ) )		///< 准备好落盘文件的句柄
+	{
+		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Quotation::BuildImageData() : failed 2 open dump file" );
+		return -10;
+	}
+
 	m_mapRate.clear();
 	m_mapKind.clear();
 	tagMkStatus.MarketStatus = tagHead.MarketStatus;
 	tagMkStatus.MarketTime = tagHead.Time;
 	QuoCollector::GetCollector()->OnImage( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), false );
+	oDataRecorder.Record( 166, (char*)&tagMkStatus, sizeof(tagMkStatus) );
 
 	tagMkInfo.KindCount = tagHead.KindCount;
 	tagMkInfo.MarketDate = tagHead.Date;
 	tagMkInfo.MarketID = Configuration::GetConfig().GetMarketID();
 	tagMkInfo.WareCount = tagHead.WareCount;
 	QuoCollector::GetCollector()->OnImage( 164, (char*)&tagMkInfo, sizeof(tagSZL1MarketInfo_LF164), false );
+	oDataRecorder.Record( 164, (char*)&tagMkInfo, sizeof(tagMkInfo) );
 
 	for( int i = 0 ; i < tagMkInfo.KindCount; i++ )
 	{
@@ -225,6 +323,7 @@ int Quotation::BuildImageData()
 		tagCategory.PeriodsCount = tagHead.PeriodsCount;
 
 		QuoCollector::GetCollector()->OnImage( 165, (char*)&tagCategory, sizeof(tagSZL1KindDetail_LF165), false );
+		oDataRecorder.Record( 165, (char*)&tagCategory, sizeof(tagCategory) );
 	}
 
 	tagCcComm_ShNameTable*	pTable = (tagCcComm_ShNameTable*)m_pDataBuff;
@@ -242,6 +341,7 @@ int Quotation::BuildImageData()
 		tagRef.Kind = pTable[i].Type;
 		strncpy( tagRef.Name, pTable[i].Name, sizeof(pTable[i].Name) );
 		QuoCollector::GetCollector()->OnImage( 167, (char*)&tagRef, sizeof(tagSZL1ReferenceData_LF167), false );
+		oDataRecorder.Record( 167, (char*)&tagRef, sizeof(tagRef) );
 	}
 
 	//3,获取扩展码表
@@ -264,6 +364,7 @@ int Quotation::BuildImageData()
 		tagExtension.StopFlag = pNameEx[i].SFlag;
 		tagExtension.Worth = pNameEx[i].Worth;
 		QuoCollector::GetCollector()->OnImage( 168, (char*)&tagExtension, sizeof(tagSZL1ReferenceExtension_LF168), false );
+		oDataRecorder.Record( 168, (char*)&tagExtension, sizeof(tagExtension) );
 	}
 
 	//4,获取指数快照
@@ -290,7 +391,9 @@ int Quotation::BuildImageData()
 		tagIndexHF.Low = pIndex[i].Low;
 
 		QuoCollector::GetCollector()->OnImage( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), false );
+		oDataRecorder.Record( 169, (char*)&tagIndexLF, sizeof(tagIndexLF) );
 		QuoCollector::GetCollector()->OnImage( 170, (char*)&tagIndexHF, sizeof(tagSZL1SnapData_HF170), false );
+		oDataRecorder.Record( 170, (char*)&tagIndexHF, sizeof(tagIndexHF) );
 	}
 
 	//5,获取个股快照
@@ -324,9 +427,14 @@ int Quotation::BuildImageData()
 		memcpy( tagStockBS.Sell, pStock[i].Sell, sizeof(tagStockBS.Sell) );
 
 		QuoCollector::GetCollector()->OnImage( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), false );
+		oDataRecorder.Record( 169, (char*)&tagStockLF, sizeof(tagStockLF) );
 		QuoCollector::GetCollector()->OnImage( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), false );
+		oDataRecorder.Record( 170, (char*)&tagStockHF, sizeof(tagStockHF) );
 		QuoCollector::GetCollector()->OnImage( 171, (char*)&tagStockBS, sizeof(tagSZL1SnapBuySell_HF171), true );
+		oDataRecorder.Record( 171, (char*)&tagStockBS, sizeof(tagStockBS) );
 	}
+
+	oDataRecorder.CloseFile();			///< 关闭落盘文件句柄
 
 	return 0;
 }
@@ -388,6 +496,7 @@ void Quotation::OnPushMarketInfo(const char *buf, size_t len)
 	tagMkStatus.MarketStatus = 1;
 	tagMkStatus.MarketTime = marketinfo->MarketTime;
 	QuoCollector::GetCollector()->OnData( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), true );
+	m_oDataRecorder.Record( 166, (char*)&tagMkStatus, sizeof(tagMkStatus) );
 }
 
 void Quotation::OnPushOrderQueue(const char *buf, size_t len) {
@@ -428,6 +537,8 @@ void Quotation::OnPushIndex(const char * buf, size_t len)
 
 	QuoCollector::GetCollector()->OnData( 170, (char*)&tagIndexHF, sizeof(tagSZL1SnapData_HF170), true );
 	QuoCollector::GetCollector()->OnData( 169, (char*)&tagIndexLF, sizeof(tagSZL1SnapData_LF169), true );
+	m_oDataRecorder.Record( 170, (char*)&tagIndexHF, sizeof(tagIndexHF) );
+	m_oDataRecorder.Record( 169, (char*)&tagIndexLF, sizeof(tagIndexLF) );
 }
 
 void Quotation::OnPushStock(const char * buf, size_t InSize)
@@ -456,6 +567,9 @@ void Quotation::OnPushStock(const char * buf, size_t InSize)
 	QuoCollector::GetCollector()->OnData( 171, (char*)&tagStockBS, sizeof(tagSZL1SnapBuySell_HF171), true );
 	QuoCollector::GetCollector()->OnData( 170, (char*)&tagStockHF, sizeof(tagSZL1SnapData_HF170), true );
 	QuoCollector::GetCollector()->OnData( 169, (char*)&tagStockLF, sizeof(tagSZL1SnapData_LF169), true );
+	m_oDataRecorder.Record( 171, (char*)&tagStockBS, sizeof(tagStockBS) );
+	m_oDataRecorder.Record( 170, (char*)&tagStockHF, sizeof(tagStockHF) );
+	m_oDataRecorder.Record( 169, (char*)&tagStockLF, sizeof(tagStockLF) );
 }
 
 void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, const char * InBuf, unsigned short InSize, unsigned char marketid )
@@ -525,6 +639,7 @@ void Quotation::OnInnerPush( unsigned char MainType, unsigned char ChildType, co
 			tagMkStatus.MarketStatus = 1;
 			tagMkStatus.MarketTime = updataTime->CurTime;
 			QuoCollector::GetCollector()->OnData( 166, (char*)&tagMkStatus, sizeof(tagSZL1MarketStatus_HF166), true );
+			m_oDataRecorder.Record( 166, (char*)&tagMkStatus, sizeof(tagMkStatus) );
 
             switch( type )
             {

@@ -74,6 +74,7 @@ int ParseSvrConfig( inifile::IniFile& refIniFile, std::string sNodeName, CTPLink
 
 
 Configuration::Configuration()
+ : m_bBroadcastModel( false ), m_nBcBeginTime( 0 )
 {
 }
 
@@ -107,6 +108,34 @@ int Configuration::Initialize()
 		QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : shutdown dump function." );
 	}
 
+	std::string	sBroadCastModel = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastModel"), nErrCode );
+	if( 0 == nErrCode )	{
+		if( sBroadCastModel == "1" )
+		{
+			m_bBroadcastModel = true;
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : ... Enter [Broadcase Model] ... !!! " );
+		}
+	}
+
+	if( true == m_bBroadcastModel )
+	{
+		m_sBcTradeFile = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastTradeFile"), nErrCode );
+		if( 0 != nErrCode )	{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : invalid broadcast (trade) file." );
+		}
+
+		m_sBcQuotationFile = oIniFile.getStringValue( std::string("SRV"), std::string("BroadcastQuotationFile"), nErrCode );
+		if( 0 != nErrCode )	{
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : invalid broadcast (quotation) file." );
+		}
+
+		m_nBcBeginTime = oIniFile.getIntValue( std::string("SRV"), std::string("BroadcastBeginTime"), nErrCode );
+		if( 0 != nErrCode )	{
+			m_nBcBeginTime = 0xffffffff;
+			QuoCollector::GetCollector()->OnLog( TLV_WARN, "Configuration::Initialize() : Topspeed Mode...!" );
+		}
+	}
+
 	return 0;
 }
 
@@ -125,15 +154,26 @@ const std::string& Configuration::GetDumpFolder() const
 	return m_sDumpFileFolder;
 }
 
-const std::string& Configuration::GetMktdt03FilePath() const
+unsigned int Configuration::GetBroadcastBeginTime() const
 {
-	return m_sMktdt03FilePath;
+	return m_nBcBeginTime;
 }
 
-const std::string& Configuration::GetReffFilePath() const
+std::string Configuration::GetTradeFilePath() const
 {
-	return m_sReffFilePath;
+	return m_sBcTradeFile;
 }
+
+std::string Configuration::GetQuotationFilePath() const
+{
+	return m_sBcQuotationFile;
+}
+
+bool Configuration::IsBroadcastModel() const
+{
+	return m_bBroadcastModel;
+}
+
 
 
 
